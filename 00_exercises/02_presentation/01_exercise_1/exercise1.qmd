@@ -1,0 +1,21 @@
+---
+title: "An Exciting Sounding Title"
+author:
+  - name: Jonathan Koop
+    orcid: 0009-0005-6020-5010
+format: 
+  revealjs:
+    progress: true
+    slideNumber: true
+    embed-resources: true
+---
+
+## My Favorite Equation
+
+Since I am just an average guy, my favorite equation is the mean.
+
+$$\overline{x}=\frac{\sum_{i=1}^n x_i}{n}$$
+
+## Info About Me That No One Knows
+
+Because I am completely open-source, I have no secrets.
