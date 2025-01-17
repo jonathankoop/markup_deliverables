@@ -1,0 +1,197 @@
+---
+title: "What Determines Who We Interact With Next?"
+subtitle: "Selecting Variables With Bayesian Shrinkage in Relational Event Models"
+format: 
+  revealjs:
+    logo: logo.png
+    scrollable: true
+    width: 1920
+    height: 1080
+author: "Jonathan Koop"
+date: today
+date-format: long
+bibliography: references.bib
+---
+
+## Dynamic Network Data
+
+![](simple-network.png){width="80%" fig-align="center"}
+
+## From Relational Event History Data...
+
+REH data typically includes the time of the event, the sender and receiver of the event, and other covariates [@Butts2008].
+
+::: columns
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| tbl-cap: "Relational Event Data"
+
+pacman::p_load(DT, ggplot2, tidyverse, plotly)
+
+# Create the data frame
+data <- data.frame(
+  Time = c("8:54", "9:08", "9:15", "9:24", "?"),
+  Sender_Age = c("Amy (28)", "Amy (28)", "Lisa (27)", "Amy (28)", "?"),
+  Receiver_Age = c("Lisa (27)", "Bob (31)", "Amy (28)", "Lisa (27)", "?"),
+  Age_Diff = c(1, 3, 1, 1, "?"),
+  Same_Gender = c(1, 0, 1, 1, "?"),
+  Extraversion_Sender = c(5, 5, 3, 5, "?")
+)
+
+# Add hover text
+hover_text <- c(
+  "At 8:54, Amy spoke to Lisa",
+  "At 9:08, Amy spoke to Bob",
+  "At 9:15, Lisa spoke to Amy",
+  "At 9:24, Amy spoke to Lisa",
+  "?"
+)
+
+# Create datatable with hovering text
+datatable(
+  data,
+  options = list(
+    rowCallback = JS(
+      "function(row, data, displayNum, displayIndex, dataIndex) {",
+      "  $(row).attr('title', 'At ' + data[1] + ', ' + data[2] + ' spoke to ' + data[3]);",
+      "}"
+    ),
+    pageLength = 5
+  )
+)
+
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+#| code-line-numbers: true
+#| cache: true
+
+# data frame without the last row
+data <- data[1:4,]
+data$Time <- as.POSIXct(data$Time, format = "%H:%M") # convert to POSIXct
+
+plot <- ggplot(data, aes(x = Time, y = 1)) +
+  geom_hline(yintercept = 1, color = "gray", linetype = "dashed") + # Add horizontal line
+  geom_point(size = 3, color = "blue") +                           # Add dots for events
+  geom_text(aes(label = paste0(Sender_Age, "\nspeaks to\n", Receiver_Age)), vjust = -1, size = 3.5) +          # Add event labels
+  scale_y_continuous(breaks = NULL) +                              # Remove y-axis ticks and labels
+  labs(
+    title = "Event Timeline",
+    x = "Time",
+    y = ""
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(), # Remove y-axis text
+    axis.ticks.y = element_blank()
+  )
+
+plotly::ggplotly(plot)
+```
+:::
+:::
+
+## ...to Relational Event Models
+
+::: center
+$$
+\begin{aligned}
+\log \text{Event Rate} &= -0.2 X_\text{AgeDiff} \\
+&\quad + 0.6 X_\text{SameGender} \\
+&\quad + 0.4 X_\text{ExtravSender}
+\end{aligned}
+$$
+:::
+
+## R Code
+
+```{r}
+#| code-line-numbers: true
+#| echo: true
+#| eval: false
+
+library(remstimate)
+
+# loading data
+data(ao_data)
+
+# processing event sequence with remify
+ao_reh <- remify::remify(edgelist = ao_data$edgelist, model = "actor")
+  
+# specifying linear predictor (for sender rate and receiver choice model)
+rate_model <- ~ 1 + remstats::indegreeSender()
+choice_model <- ~ remstats::inertia() + remstats::reciprocity()
+
+# calculating statistics
+ao_reh_stats <- remstats::remstats(reh = ao_reh, 
+                                   sender_effects = rate_model, 
+                                   receiver_effects = choice_model)
+
+# running estimation
+ao_mle <- remstimate::remstimate(reh = ao_reh,
+                                 stats = ao_reh_stats,
+                                 method = "MLE",
+                                 ncores = 1)
+# summary
+summary(ao_mle)
+```
+
+Unfortunately, the code will not be executed here.
+
+## Cached and Labelled Code, Executed
+
+```{r}
+#| echo: false
+#| cache: true
+#| label: "remstimate"
+
+# if required, install pacman package
+if (!requireNamespace("pacman", quietly = TRUE)) {
+  install.packages("pacman")
+}
+
+library(pacman)
+
+# load all packages with pacman
+p_load("remify", "remstats", "remstimate")
+
+# loading data
+data(ao_data)
+
+# processing event sequence with remify
+ao_reh <- remify::remify(edgelist = ao_data$edgelist, model = "actor")
+  
+# specifying linear predictor (for sender rate and receiver choice model)
+rate_model <- ~ 1 + remstats::indegreeSender()
+choice_model <- ~ remstats::inertia() + remstats::reciprocity()
+
+# calculating statistics
+ao_reh_stats <- remstats::remstats(reh = ao_reh, 
+                                   sender_effects = rate_model, 
+                                   receiver_effects = choice_model)
+
+# running estimation
+ao_mle <- remstimate::remstimate(reh = ao_reh,
+                                 stats = ao_reh_stats,
+                                 method = "MLE",
+                                 ncores = 1)
+# summary
+summary(ao_mle)
+```
+
+
+## The Environment Used
+
+```{r}
+library(renv)
+init()
+```
+
+## References
+
+::: {#refs}
+:::
+
