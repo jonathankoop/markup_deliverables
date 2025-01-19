@@ -37,8 +37,8 @@ This project uses data from the [Statsbomb Open-Data Repository](https://github.
 
 ## Author
 
-Jonathan Koop
+[Jonathan Koop](http://jonathankoop.eu/)
 
 ## Date of Creation
 
-2025-01-19
+January 19, 2025
