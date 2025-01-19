@@ -29,7 +29,7 @@ To reproduce the analysis, follow these steps:
 
 This project uses data from the [Statsbomb Open-Data Repository](https://github.com/statsbomb/open-data).
 
-![](https://github.com/statsbomb/open-data/blob/03d3ff72eda69b3e53f4ac499f159b6fec5f0df0/img/SB%20-%20Icon%20Lockup%20-%20Colour%20positive.png?raw=true){width="30%"}
+![](https://github.com/statsbomb/open-data/blob/03d3ff72eda69b3e53f4ac499f159b6fec5f0df0/img/SB%20-%20Icon%20Lockup%20-%20Colour%20positive.png?raw=true)
 
 ## Author
 
