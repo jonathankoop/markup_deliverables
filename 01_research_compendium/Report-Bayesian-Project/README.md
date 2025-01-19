@@ -18,12 +18,14 @@ To reproduce the analysis, follow these steps:
 
 1.  Clone this repository to your local machine.
 2.  Open the `Report-Bayesian-Project.Rproj` file in RStudio.
-3.  Run the scripts in the `scripts` folder in the following order:
+3.  If not done already, install the `renv` package by running `install.packages("renv")` in the R console.
+4.  Restore the project library by running `renv::restore()` in the R console.
+5.  Run the scripts in the `scripts` folder in the following order:
     -   `01_functions/functions.qmd`
     -   `02_analysis/01_data_wrangling.qmd`
     -   `02_analysis/02_sampling.qmd`
     -   `02_analysis/03_hypothesis_testing.qmd`
-4.  Render the report by knitting the `docs/report.qmd` file in RStudio.
+6.  Render the report by knitting the `documents/report.qmd` file in RStudio.
 
 ## Acknowledgements
 
