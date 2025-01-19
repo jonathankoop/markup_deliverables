@@ -27,6 +27,8 @@ To reproduce the analysis, follow these steps:
     -   `02_analysis/03_hypothesis_testing.qmd`
 6.  Render the report by knitting the `documents/report.qmd` file in RStudio.
 
+**Note**: In the case of issues rendering the report, leading to errors regarding the installed LaTeX packages, make sure the necessary packages are installed by running `sudo tlgmr install [packagename]` in your console. In case, this does not resolve the issue, consider switching to `format: html` in the YAML or opening a GitHub issue.
+
 ## Acknowledgements
 
 This project uses data from the [Statsbomb Open-Data Repository](https://github.com/statsbomb/open-data).
