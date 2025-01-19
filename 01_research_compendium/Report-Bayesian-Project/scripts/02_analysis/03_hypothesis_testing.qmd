@@ -1,0 +1,113 @@
+---
+title: "3. Hypothesis Testing"
+subtitle: "Adaptive Playmaking: Incorparating Prior Knowledge in Analyzing Football Passes Using Relational Event Modelling"
+author: "Jonathan Koop"
+date: "`r Sys.Date()`"
+number-sections: true
+format: html
+---
+
+This document provides the code for the Hypothesis Testing for the paper "Adaptive Playmaking: Incorparating Prior Knowledge in Analyzing Football Passes Using Relational Event Modelling". This is the first document in a series of documents that are used to analyze football passes using a relational event model. The documents are split into the following sections:
+
+1.  Data Wrangling (`01_data_wrangling.qmd`)
+
+2.  Sampling (`02_sampling.qmd`)
+
+3.  **Hypothesis Testing (`03_hypothesis_testing.qmd`)**
+
+This document relies on the functions provided in `functions/functions.Qmd` The sampled data is loaded from the `results/samples` folder. The results are saved in the `results` folder.
+
+## Loading Relevant Packages
+
+In order to run the code, the following packages need to be installed and loaded. The code below will install the packages if they are not already installed and load them.
+
+```{r}
+library(jsonlite)
+library(dplyr)
+library(purrr)
+library(remstats)
+library(remify)
+library(MASS)
+library(ggsoccer)
+library(truncnorm)
+library(extraDistr)
+library(mvtnorm)
+library(progress)
+library(statmod)
+library(abind)
+library(ggplot2)
+library(rvest)
+library(stringr)
+library(tidyr)
+library(foreach)
+library(doParallel)
+library(xtable)
+library(bain)
+library(remstimate)
+
+load("../../functions/functions.RData")
+```
+
+## Load Samples
+
+```{r}
+load("../../results/01_samples/results_gibbs_updated.RData")
+```
+
+# Hypothesis Testing Framework
+
+## Using `bain`
+
+```{r}
+results_bain <- bain(
+    x = results_gibbs_updated[[1]]$beta_mean,
+    # mean of posterior
+    "-b3<b2<b1<-b4;-b3<b1<b2<-b4;b2<-b3<b1<-b4;b1<-b3<b2<-b4",
+    # hypotheses
+    Sigma = results_gibbs_updated[[1]]$Sigma,
+    # covariance matrix
+    n = results_gibbs_updated[[1]]$M * results_gibbs_updated[[1]]$N
+  )
+
+results_bain
+```
+
+## Manual Computation
+
+Due to the fact that no integration of a multivariate normal distribution with limits regarding the different variables is easily available, a sampling approach was taken. This is expected to be less accurate than the `bain` function as it is based on sampling from the prior and posterior distributions. Below, the results are computed.
+
+```{r}
+results_hypotheses <- bayesfactor(
+  prior_mean = rep(0, 4),
+  posterior_mean = results_gibbs_updated[[1]]$beta_mean,
+  posterior_variance = results_gibbs_updated[[1]]$Sigma,
+  n = results_gibbs_updated[[1]]$N,
+  m = results_gibbs_updated[[1]]$M,
+  n_samples = 10000000,
+  method = "robust"
+)
+
+save(results_hypotheses, file = "../../results/02_hypotheses/results_hypotheses.RData")
+```
+
+And printed as a table, which is used in `report.qmd`.
+
+```{r}
+hypotheses_table <- print(xtable(results_hypotheses), include.rownames = FALSE)
+
+# Save results as latex table
+write(hypotheses_table, file = "../../output/02_tables/hypotheses_table.tex")
+```
+
+## Sensitivity Analysis
+
+```{r}
+results_hypotheses_sensitivity <- bayesfactor(
+  prior_mean = rep(0, 4), # set prior mean to 0
+  posterior_mean = results_gibbs_updated[[1]]$beta_mean, # set posterior mean
+  posterior_variance = results_gibbs_updated[[1]]$Sigma, # set posterior variance
+  b = results_bain$b, # set b to bain's b
+  n_samples = 10000000, # set number of samples
+  method = "bain" # set method to bain
+)
+```

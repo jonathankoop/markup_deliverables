@@ -1,0 +1,228 @@
+---
+title: "1. Data Wrangling"
+subtitle: "Adaptive Playmaking: Incorparating Prior Knowledge in Analyzing Football Passes Using Relational Event Modelling"
+author: "Jonathan Koop"
+date: "`r Sys.Date()`"
+number-sections: true
+format: html
+---
+
+This document provides the code for the Data Wrangling for the paper "Adaptive Playmaking: Incorparating Prior Knowledge in Analyzing Football Passes Using Relational Event Modelling". This is the first document in a series of documents that are used to analyze football passes using a relational event model. The documents are split into the following sections:
+
+1.  **Data Wrangling (`01_data_wrangling.qmd`)**
+
+2.  Sampling (`02_sampling.qmd`)
+
+3.  Hypothesis Testing (`03_hypothesis_testing.qmd`)
+
+This document relies on the functions provided in `functions/functions.Qmd` The data is loaded from the Statsbomb API and the player attributes are scraped from Transfermarkt. The results are saved in the `results` folder.
+
+## Loading Relevant Packages
+
+In order to run the code, the following packages need to be installed and loaded. The code below will install the packages if they are not already installed and load them.
+
+```{r}
+library(jsonlite)
+library(dplyr)
+library(purrr)
+library(remstats)
+library(remify)
+library(MASS)
+library(ggsoccer)
+library(truncnorm)
+library(extraDistr)
+library(mvtnorm)
+library(progress)
+library(statmod)
+library(abind)
+library(ggplot2)
+library(rvest)
+library(stringr)
+library(tidyr)
+library(foreach)
+library(doParallel)
+library(xtable)
+library(bain)
+library(remstimate)
+
+
+load("../../functions/functions.RData")
+```
+
+# Data Wrangling
+
+## Reading in the Data
+
+First, the data is read in from the Statsbomb API. The data is then prepared for the analysis.
+
+```{r}
+#| warning: false
+# Load the JSON file
+data_game_1 <- fromJSON("https://raw.githubusercontent.com/statsbomb/open-data/master/data/events/3895167.json", flatten = TRUE) # first game
+data_game_2 <- fromJSON("https://raw.githubusercontent.com/statsbomb/open-data/master/data/events/3895320.json", flatten = TRUE) # second game
+```
+
+## Data Preparation
+
+### Extract Pass Events
+
+Because the Statsbomb data is in a nested format, the pass events need to be extracted. To do this, the `extract_pass_events` function is used.
+
+```{r}
+# First Game
+pass_events_game_1 <- extract_pass_events(data_game_1)
+
+# Second Game
+pass_events_game_2 <- extract_pass_events(data_game_2)
+```
+
+### Remify the Data Frame
+
+Next, we need to remify the data frame to prepare it for the analysis. This is done by using the `remify` \[\@\] function within `get_edgelist`.
+
+```{r}
+# First Game
+Events_game_1 <- get_edgelist(pass_events_game_1)
+
+# Second Game
+Events_game_2 <- get_edgelist(pass_events_game_2)
+```
+
+### Retrieve Player Attributes
+
+In a next step, the player attributes are retrieved. To this end, for one, some data is scraped from Transfermarkt. Additionally, some other infromation is taken from the Statsbomb data.
+
+#### Scrape Age
+
+First, the age of the players is scraped from [Transfermarkt.com](https://www.transfermarkt.com/). The function `scrape_ages` is used to scrape the data.
+
+```{r}
+#| warning: false
+url <- "https://www.transfermarkt.com/vfb-stuttgart/kader/verein/79/sort/age/0?saison_id=2023"
+age_data <- scrape_ages(url)
+```
+
+#### Extract Player Attributes
+
+Next, the player attributes are extracted from the Statsbomb data.
+
+```{r}
+# First Game
+attributes_game_1 <- extract_attributes(data_game_1, age_data, home = TRUE)
+
+# Second Game
+attributes_game_2 <- extract_attributes(data_game_2, age_data, home = FALSE)
+```
+
+#### Average Distance
+
+In addition to the provided attributes, the average distance of the players is calculated.
+
+To do that, the `avg_position` function is first used to calculate the average position of the players.
+
+```{r}
+# First Game
+avgloc_game_1 <- avg_position(data_game_1, attributes_game_1)
+
+# Second Game
+avgloc_game_2 <- avg_position(data_game_2, attributes_game_2)
+```
+
+We can then check the average positions by plotting them on the pitch.
+
+```{r}
+# First Game
+plot_avg_position(avgloc_game_1)
+
+# Second Game
+plot_avg_position(avgloc_game_2)
+```
+
+Then, we can calculate the average distance of the players to each other.
+
+```{r}
+# First Game
+avgdist_game_1 <- avg_distance(Events = Events_game_1, avgloc = avgloc_game_1)
+
+# Second Game
+avgdist_game_2 <- avg_distance(Events = Events_game_2, avgloc = avgloc_game_2)
+```
+
+### Statistics
+
+In order to estimate the REM model, we need to compute the statistics for the model, which will serve as our predictors. This is done by using the `compute_stats` function.
+
+First, we need to define the receiver effects.
+
+```{r}
+receiver_effects <- ~ inertia() + reciprocity() + difference("age") # define receiver effects
+```
+
+And then we can compute the statistics.
+
+```{r}
+# First Game
+stats_game_1 <- compute_stats(
+  Events = Events_game_1, # pass events
+  receiver_effects = receiver_effects, # receiver effects
+  attributes = attributes_game_1, # player attributes
+  avgdist = avgdist_game_1 # average distance
+)
+
+X_game_1 <- stats_game_1$X
+stats_game_1 <- stats_game_1$stats
+
+# Second Game
+stats_game_2 <- compute_stats(
+  Events = Events_game_2,
+  receiver_effects = receiver_effects,
+  attributes = attributes_game_2,
+  avgdist = avgdist_game_2
+)
+
+X_game_2 <- stats_game_2$X
+stats_game_2 <- stats_game_2$stats
+```
+
+In order to allow for a comparison of estimated coefficients in the two games, the statistics are standardized.
+
+For the first game:
+
+```{r}
+std_X_game_1 <- standardize_stats(X_game_1)
+
+# Check the standard deviation of each slice
+apply(std_X_game_1, 3, mean, na.rm = TRUE)
+apply(std_X_game_1, 3, sd, na.rm = TRUE)
+
+stats_game_1$receiver_stats <- std_X_game_1
+```
+
+And for the second game:
+
+```{r}
+std_X_game_2 <- standardize_stats(X_game_2)
+
+# Check the standard deviation of each slice
+apply(std_X_game_2, 3, mean, na.rm = TRUE)
+apply(std_X_game_2, 3, sd, na.rm = TRUE)
+
+stats_game_2$receiver_stats <- std_X_game_2
+```
+
+### Save the Data
+
+Finally, the data is saved in the `processed_data` folder.
+
+```{r}
+save("Events_game_1", 
+     file = "../../processed_data/Events_game_1.RData")
+save("Events_game_2", 
+     file = "../../processed_data/Events_game_2.RData")
+save("std_X_game_1", 
+     file = "../../processed_data/std_X_game_1.RData")
+save("std_X_game_2", 
+     file = "../../processed_data/std_X_game_2.RData")
+save("stats_game_1",
+     file = "../../processed_data/stats_game_1.RData")
+```

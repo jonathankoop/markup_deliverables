@@ -1,0 +1,370 @@
+---
+title: "2. Sampling"
+subtitle: "Adaptive Playmaking: Incorparating Prior Knowledge in Analyzing Football Passes Using Relational Event Modelling"
+author: "Jonathan Koop"
+date: "`r Sys.Date()`"
+number-sections: true
+format: html
+---
+
+This document provides the code for the Sampling for the paper "Adaptive Playmaking: Incorparating Prior Knowledge in Analyzing Football Passes Using Relational Event Modelling". This is the first document in a series of documents that are used to analyze football passes using a relational event model. The documents are splqit into the following sections:
+
+1.  Data Wrangling (`01_data_wrangling.qmd`)
+
+2.  **Sampling (`02_sampling.qmd`)**
+
+3.  Hypothesis Testing (`03_hypothesis_testing.qmd`)
+
+This document relies on the functions provided in `functions/functions.Qmd` The wrangled data is loaded from the `processed_data` folder. The results are saved in the `results` folder.
+
+## Loading Relevant Packages
+
+In order to run the code, the following packages need to be installed and loaded. The code below will install the packages if they are not already installed and load them.
+
+```{r}
+library(jsonlite)
+library(dplyr)
+library(purrr)
+library(remstats)
+library(remify)
+library(MASS)
+library(ggsoccer)
+library(truncnorm)
+library(extraDistr)
+library(mvtnorm)
+library(progress)
+library(statmod)
+library(abind)
+library(ggplot2)
+library(rvest)
+library(stringr)
+library(tidyr)
+library(foreach)
+library(doParallel)
+library(xtable)
+library(bain)
+library(remstimate)
+
+
+load("../../functions/functions.RData")
+```
+
+## Load Wrangled Data
+
+```{r}
+load("../../processed_data/Events_game_1.RData")
+load("../../processed_data/Events_game_2.RData")
+load("../../processed_data/std_X_game_1.RData")
+load("../../processed_data/std_X_game_2.RData")
+load("../../processed_data/stats_game_1.RData")
+```
+
+
+## Set up parallel processing
+
+As the code is computationally intensive, parallel processing is used to speed up the computation. The number of cores is set to the number of cores available on the machine minus one.
+
+```{r}
+n.cores <- detectCores() - 1
+
+cluster <- parallel::makeCluster(
+  n.cores
+)
+registerDoParallel(cl = cluster)
+```
+
+
+# Sampling
+
+After the data has been prepared, the model can be estimated. The model is estimated using a Gibbs sampler. The results are then used to compute the trace data, which is used to create trace plots, density plots, and to compute the Gelman Rubin statistic in order to evaluate the convergence of the sampler. The results are then saved in the `results` folder.
+
+## Estimation of the Model With Gibbs Sampler
+
+First, the own functions are used to estimate the model. As the specified number of iterations is computationally intensive, the code is run in parallel three times to speed up the computation.
+
+### First Game
+
+```{r}
+results_gibbs_game_1 <- list() # create list to store results
+results_gibbs_game_1 <- foreach(seed = 1:3) %dopar% {
+  # run sampler in parallel for faster computation
+  results <- gibbs_sampler(
+    Events = Events_game_1$edgelist,
+    X = std_X_game_1,
+    burnin = 1000,
+    iter = 50000,
+    store = 5,
+    prior = "flat",
+    seed = seed
+  ) # run with flat prior and burnin 1000, iter 50000, store 5
+}
+
+# save results_gibbs_game_1
+save(results_gibbs_game_1, file = "../../results/01_samples/results_gibbs_game_1.RData")
+```
+
+### Second Game
+
+```{r}
+results_gibbs_game_2 <- list()
+results_gibbs_game_2 <- foreach(seed = 1:3) %dopar% {
+  results <- gibbs_sampler(
+    Events = Events_game_2$edgelist,
+    X = std_X_game_2,
+    burnin = 1000,
+    iter = 50000,
+    store = 5,
+    prior = "flat",
+    seed = seed
+  )
+}
+
+# save results_gibbs
+save(results_gibbs_game_2, file = "../../results/01_samples/results_gibbs_game_2.RData")
+```
+
+### After Updating
+
+```{r}
+results_gibbs_updated <- list()
+results_gibbs_updated <- foreach(seed = 1:3) %dopar% {
+  results <- gibbs_sampler(
+    Events = Events_game_2$edgelist,
+    X = std_X_game_2,
+    burnin = 1000,
+    iter = 50000,
+    store = 5,
+    prior = "normal",
+    seed = seed,
+    mu0 = results_gibbs_game_1[[1]]$beta_mean,
+    Sigma0 = results_gibbs_game_1[[1]]$beta_cov
+  )
+}
+
+# save results_gibbs_updated
+save(results_gibbs_updated, file = "../../results/01_samples/results_gibbs_updated.RData")
+```
+
+## Evaluation of Convergence
+
+To evaluate the convergence of the sampler, the trace data is used to create trace plots, density plots, and to compute the Gelman Rubin statistic.
+
+### Trace Data
+
+First, the trace data is extracted from the results.
+
+```{r}
+data_trace <- trace_data(results_gibbs_game_1)
+data_trace_game_2 <- trace_data(results_gibbs_game_2)
+data_trace_upd <- trace_data(results_gibbs_updated)
+```
+
+### Trace Plot
+
+Next, the trace plots are created.
+
+#### First Game
+
+```{r}
+plot_trace(data_trace, title = "Trace Plots For First Game")
+
+# save plot in /output in 5:3
+ggsave("../../output/01_plots/trace_plots_game_1.png", width = 5, height = 3)
+```
+
+#### Second Game
+
+```{r}
+plot_trace(data_trace_game_2, title = "Trace Plots For Second Game")
+
+# save plot in /output in 5:3
+ggsave("../../output/01_plots/trace_plots_game_2.png", width = 5, height = 3)
+```
+
+#### Updated Model
+
+```{r}
+plot_trace(data_trace_upd, title = "Trace Plots After Updating")
+
+# save plot in /output in 5:3
+ggsave("../../output/01_plots/trace_plots_updated.png", width = 5, height = 3)
+```
+
+### Gelman Rubin Statistic
+
+Next, the Gelman Rubin statistic is computed to evaluate the convergence of the sampler.
+
+```{r}
+# Apply the function to each beta
+data_trace %>%
+  group_by(beta) %>% # group by beta
+  summarise(R_hat = gelman_rubin(cur_data()), .groups = 'drop') # calculate R_hat
+
+data_trace_game_2 %>%
+  group_by(beta) %>%
+  summarise(R_hat = gelman_rubin(cur_data()), .groups = 'drop')
+
+data_trace_upd %>%
+  group_by(beta) %>%
+  summarise(R_hat = gelman_rubin(cur_data()), .groups = 'drop')
+```
+
+## Visualization of the Posterior Distributions
+
+To visualize the posterior distributions, density plots are created.
+This is done by first computing the highest posterior density (HPD) intervals, which are then used to highlight the regions of highest density in the density plots.
+
+### First Game
+
+```{r}
+hpd_data <- compute_hpd_intervals(data_trace, results_gibbs_game_1)
+
+plot_density(hpd_data, title = "Density Plots For First Game")
+
+ggsave("../../output/01_plots/density_plots_game_1.png", width = 5, height = 3)
+```
+
+### Second Game
+
+```{r}
+hpd_data_game_2 <- compute_hpd_intervals(data_trace_game_2, results_gibbs_game_2)
+
+plot_density(hpd_data_game_2, title = "Density Plots For Second Game")
+
+ggsave("../../output/01_plots/density_plots_game_2.png", width = 5, height = 3)
+```
+
+### Updated Model
+
+```{r}
+hpd_data_upd <- compute_hpd_intervals(data_trace_upd, results_gibbs_updated)
+
+plot_density(hpd_data_upd, title = "Density Plots After Updating")
+
+ggsave("../../output/01_plots/density_plots_updated.png", width = 5, height = 3)
+```
+
+### Plotting the Influence of Prior and Likelihood
+
+To illustrate the influence of the prior and likelihood on the posterior, the density plots of the prior, likelihood, and posterior are plotted for each parameter and added to a single plot.
+
+```{r}
+beta_labels <- c(
+    "beta1" = "Inertia",
+    "beta2" = "Reciprocity",
+    "beta3" = "Age Difference",
+    "beta4" = "Average Distance"
+  )
+
+ggplot() +
+  geom_density(data = data_trace[data_trace$trace == 1, ], # plot density of prior
+               aes(x = value, fill = "Game 1 (Prior)", color = "Game 1 (Prior)"), alpha = 0.3) +
+  geom_density(data = data_trace_game_2[data_trace_game_2$trace == 1, ], # plot density of likelihood
+               aes(x = value, fill = "Game 2 (Likelihood)", color = "Game 2 (Likelihood)"), alpha = 0.3) +
+  geom_density(data = data_trace_upd[data_trace_upd$trace == 1, ], # plot density of posterior
+               aes(x = value, fill = "Posterior", color = "Posterior"), alpha = 0.3) +
+  facet_wrap(~ beta, scales = "free", labeller = labeller(beta = as_labeller(beta_labels))) +
+  scale_color_manual(name = "Data", values = c("Game 1 (Prior)" = "green", "Game 2 (Likelihood)" = "blue", "Posterior" = "red")) +
+  scale_fill_manual(name = "Data", values = c("Game 1 (Prior)" = "green", "Game 2 (Likelihood)" = "blue", "Posterior" = "red")) +
+  theme_minimal() +
+  labs(title = "Influence of Prior and Likelihood", x = "Parameter Value", y = "Density")
+
+ggsave("../../output/01_plots/influence_prior_lik.png", width = 9, height = 3)
+```
+
+## Comparison Of Results
+
+To ensure that the results are consistent, the results from the sampler are compared to the results from a paper by @Karimova the `remstimate` function.
+
+### Results from Paper
+
+First, the results from the paper are computed and compared to the results from the sampler.
+
+```{r}
+edgelist_karimova <- Events_game_1$edgelist
+
+edgelist_karimova[,3] <- edgelist_karimova[,2] # add index column
+results_paper <- flat.actor(edgelist_karimova, std_X_game_1) # apply function
+colMeans(results_paper$beta) # calculate mean of beta
+```
+
+The results from the paper are very similar to the results from the sampler.
+
+### Results from `remstimate`
+
+Next, the model is estimated with MLE using the `remstimate` function. Here we assume that results from Maximum Likelihood Estimation should be similar to the results from the sampler with flat prior.
+
+```{r}
+model <- remstimate(reh = Events_game_1$reh,
+                    stats = stats_game_1,
+                    method = "MLE")
+summary(model) # print summary
+```
+
+The results from the sampler are consistent with the results from the paper and the `remstimate` function.
+
+### Evaluating the Sampler with Prior
+
+Lastly, the sampler is evaluated with a normal prior. The results are compared to the results from the sampler with a flat prior, to see if the prior actually has an influence on the posterior.
+
+First, we check the influence of the prior mean. To do that, we set different prior means and compare the posteriors.
+
+```{r}
+# Set Prior Means
+means <- list()
+means[[1]] <- rep(-10, 4) # set prior mean to -10
+means[[2]] <- rep(0, 4) # set prior mean to 0
+means[[3]] <- rep(10, 4) # set prior mean to 10
+
+# Create list to store results
+gibbs_prior_mean_check <- list()
+
+# Run sampler for different prior means
+for (i in 1:3) {
+  gibbs_prior_mean_check[[i]] <- gibbs_sampler(
+    Events = Events_game_2$edgelist,
+    X = std_X_game_2,
+    burnin = 100,
+    iter = 5000,
+    store = 5,
+    prior = "normal",
+    mu0 = means[[i]],
+    Sigma0 = results_gibbs_game_1[[1]]$Sigma
+  )
+}
+```
+
+The sampler successfully accounts for the prior mean. The higher the prior mean, the higher the posterior mean. Thus, we can continue with checking the influence of the prior variance.
+
+To do that, we again set different prior variances and compare the posteriors.
+
+```{r}
+# Set Prior Variances
+varfactor <- list()
+varfactor[[1]] <- rep(0.001, 4) # multiply prior variance by 0.001
+varfactor[[2]] <- rep(1, 4) # multiply prior variance by 1
+varfactor[[3]] <- rep(100, 4) # multiply prior variance by 100
+
+# Create list to store results
+gibbs_prior_var_check <- list()
+
+# Run sampler for different prior variances
+for (i in 1:3) {
+  gibbs_prior_var_check[[i]] <- gibbs_sampler(
+    Events = Events_game_2$edgelist,
+    X = std_X_game_2,
+    burnin = 100,
+    iter = 5000,
+    store = 5,
+    prior = "normal",
+    mu0 = results_gibbs_game_1[[1]]$beta_mean,
+    Sigma0 = varfactor[[i]] * results_gibbs_game_1[[1]]$Sigma
+  )
+}
+```
+
+The sampler also correctly accounts for the prior variance. The higher the prior variance, the lower the influence of the prior and the higher the posterior variance. 
+
+```{r}
+stopCluster(cl = cluster)
+```
